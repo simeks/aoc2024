@@ -5,6 +5,7 @@ const assert = std.debug.assert;
 const print = std.debug.print;
 
 const IntList = std.ArrayList(i32);
+const CountMap = std.AutoArrayHashMap(i32, i32);
 
 pub fn readLists(
     allocator: Allocator,
@@ -31,7 +32,20 @@ pub fn sortList(list: *IntList) void {
     std.mem.sort(i32, list.items, {}, std.sort.asc(i32));
 }
 
-pub fn totalDistance(allocator: Allocator, input: []const u8) !i32 {
+/// Count occurence for each number in list
+pub fn countNumbers(allocator: Allocator, list: *IntList) !CountMap {
+    var count = CountMap.init(allocator);
+    for (list.items) |n| {
+        if (count.get(n)) |c| {
+            try count.put(n, c + 1);
+        } else {
+            try count.put(n, 1);
+        }
+    }
+    return count;
+}
+
+pub fn similarityScore(allocator: Allocator, input: []const u8) !i32 {
     var left, var right = try readLists(allocator, input);
     defer left.deinit();
     defer right.deinit();
@@ -39,11 +53,15 @@ pub fn totalDistance(allocator: Allocator, input: []const u8) !i32 {
     sortList(&left);
     sortList(&right);
 
-    var sum: i32 = 0;
-    for (0..left.items.len) |i| {
-        sum += @intCast(@abs(left.items[i] - right.items[i]));
+    var right_counts = try countNumbers(allocator, &right);
+    defer right_counts.deinit();
+
+    var score: i32 = 0;
+    for (left.items) |left_value| {
+        const multiplier = right_counts.get(left_value) orelse 0;
+        score += left_value * multiplier;
     }
-    return sum;
+    return score;
 }
 
 pub fn main() !void {
@@ -51,8 +69,8 @@ pub fn main() !void {
     const alloc = gpa.allocator();
 
     const input = @embedFile("input/day1.txt");
-    const sum = try totalDistance(alloc, input);
-    print("Sum: {d}\n", .{sum});
+    const score = try similarityScore(alloc, input);
+    print("Sum: {d}\n", .{score});
 }
 
 const test_alloc = std.testing.allocator;
@@ -109,7 +127,7 @@ test "sortList" {
     try expectEqual(3, list.items[4]);
     try expectEqual(4, list.items[5]);
 }
-test "totalDistance" {
+test "similarityScore" {
     const input =
         \\3   4
         \\4   3
@@ -119,6 +137,24 @@ test "totalDistance" {
         \\3   3
     ;
 
-    const sum = try totalDistance(test_alloc, input);
-    try expectEqual(11, sum);
+    const sum = try similarityScore(test_alloc, input);
+    try expectEqual(31, sum);
+}
+test "countNumbers" {
+    var list = try IntList.initCapacity(test_alloc, 6);
+    defer list.deinit();
+    try list.append(3);
+    try list.append(4);
+    try list.append(2);
+    try list.append(1);
+    try list.append(3);
+    try list.append(3);
+
+    var counts = try countNumbers(test_alloc, &list);
+    defer counts.deinit();
+
+    try expectEqual(3, counts.get(3).?);
+    try expectEqual(1, counts.get(4).?);
+    try expectEqual(1, counts.get(2).?);
+    try expectEqual(1, counts.get(1).?);
 }
