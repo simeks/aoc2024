@@ -1,4 +1,4 @@
-# Zig AOC
+# AOC 2024 using Zig
 
 ## Running
 
