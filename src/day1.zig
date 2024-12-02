@@ -50,8 +50,8 @@ pub fn similarityScore(allocator: Allocator, input: []const u8) !i32 {
     defer left.deinit();
     defer right.deinit();
 
-    sortList(&left);
-    sortList(&right);
+    // sortList(&left);
+    // sortList(&right);
 
     var right_counts = try countNumbers(allocator, &right);
     defer right_counts.deinit();
