@@ -21,24 +21,58 @@ pub fn readReport(line: []const u8) !Report {
     return report;
 }
 pub fn checkSafe(values: []const i32) bool {
-    assert(values.len > 1);
+    assert(values.len >= 4);
     assert(values.len < MAX_REPORT_VALUE_COUNT);
 
-    var diffs = std.BoundedArray(i32, MAX_REPORT_VALUE_COUNT - 1){};
-    for (0..values.len - 1) |i| {
-        diffs.append(values[i + 1] - values[i]) catch unreachable;
-    }
+    // Determine sign by majority voting
+    // We know only 1 value is allowed to have a different sign
+    const sign0 = (values[1] - values[0]) >= 0;
+    const sign1 = (values[2] - values[1]) >= 0;
+    const sign2 = (values[3] - values[2]) >= 0;
+    const sign = (sign0 and sign1) or (sign1 and sign2) or (sign0 and sign2);
 
-    const incr = diffs.get(0) > 0;
-    for (diffs.slice()) |d| {
-        // All increasing or decreasing
-        if (incr != (d > 0)) {
+    // Number of failed checks
+    var fails: i32 = 0;
+
+    var i: usize = 0;
+    while (i < values.len - 1) : (i += 1) {
+        // Forward difference
+        const d0 = values[i + 1] - values[i];
+        // Check diff to closest neighbour
+        if ((d0 >= 0) == sign and 0 < @abs(d0) and @abs(d0) <= 3) {
+            continue;
+        }
+
+        if (fails > 0) {
             return false;
         }
-        // Outside limits
-        if (@abs(d) <= 0 or @abs(d) > 3) {
-            return false;
+
+        fails += 1;
+
+        // Didn't work, attempt to delete value[i+1]
+        if (i + 2 == values.len) {
+            // No diff to re-evalute if last value goes
+            continue;
         }
+
+        const d1 = values[i + 2] - values[i];
+        if ((d1 >= 0) == sign and 0 < @abs(d1) and @abs(d1) <= 3) {
+            i += 1; // we just deleted i+1, so skip it
+            continue;
+        }
+
+        // Attempt to delete value[i]
+        if (i == 0) {
+            // No diff to re-evalute if first value goes
+            continue;
+        }
+
+        const d2 = values[i + 1] - values[i - 1];
+        if ((d2 >= 0) == sign and 0 < @abs(d2) and @abs(d2) <= 3) {
+            continue;
+        }
+
+        return false;
     }
 
     return true;
@@ -58,7 +92,7 @@ pub fn countSafe(input: []const u8) !i32 {
 pub fn main() !void {
     const input = @embedFile("input/day2.txt");
     const count = try countSafe(input);
-    print("Safe report: {d}\n", .{count});
+    print("Safe reports: {d}\n", .{count});
 }
 
 const test_alloc = std.testing.allocator;
@@ -82,10 +116,14 @@ test "checkSafe" {
     try expectEqual(true, checkSafe(&.{ 7, 6, 4, 2, 1 }));
     try expectEqual(false, checkSafe(&.{ 1, 2, 7, 8, 9 }));
     try expectEqual(false, checkSafe(&.{ 9, 7, 6, 2, 1 }));
-    try expectEqual(false, checkSafe(&.{ 1, 3, 2, 4, 5 }));
-    try expectEqual(false, checkSafe(&.{ 8, 6, 4, 4, 1 }));
+    try expectEqual(true, checkSafe(&.{ 1, 3, 2, 4, 5 }));
+    try expectEqual(true, checkSafe(&.{ 8, 6, 4, 4, 1 }));
     try expectEqual(true, checkSafe(&.{ 1, 3, 6, 7, 9 }));
     try expectEqual(true, checkSafe(&.{ 1, 3, 6, 7, 9, 10 }));
+    try expectEqual(true, checkSafe(&.{ 1, 3, 6, 7, 9, 1 }));
+    try expectEqual(false, checkSafe(&.{ 10, 3, 6, 7, 9, 1 }));
+    try expectEqual(true, checkSafe(&.{ 24, 21, 18, 15, 13, 8 }));
+    try expectEqual(true, checkSafe(&.{ 86, 82, 85, 84, 81, 78 }));
 }
 test "countSafe" {
     const input =
@@ -95,7 +133,6 @@ test "countSafe" {
         \\1 3 2 4 5
         \\8 6 4 4 1
         \\1 3 6 7 9
-        \\1 3 6 7 9 10
     ;
-    try expectEqual(3, countSafe(input));
+    try expectEqual(4, countSafe(input));
 }
