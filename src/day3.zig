@@ -20,6 +20,7 @@ pub fn runString(str: []const u8) i32 {
 
     var a: i32 = undefined;
     var b: i32 = undefined;
+    var do = true;
 
     while (i < str.len) {
         switch (state) {
@@ -30,6 +31,16 @@ pub fn runString(str: []const u8) i32 {
                 if (std.mem.eql(u8, str[i .. i + 4], "mul(")) {
                     i += 4;
                     state = .a;
+                    continue;
+                }
+                if (std.mem.eql(u8, str[i .. i + 4], "do()")) {
+                    i += 4;
+                    do = true;
+                    continue;
+                }
+                if (std.mem.eql(u8, str[i .. i + 7], "don't()")) {
+                    i += 7;
+                    do = false;
                     continue;
                 }
             },
@@ -66,7 +77,7 @@ pub fn runString(str: []const u8) i32 {
                 }
             },
             .end => {
-                if (str[i] == ')') {
+                if (do and str[i] == ')') {
                     sum += a * b;
                 }
                 state = .op;
@@ -89,6 +100,8 @@ const expectEqual = std.testing.expectEqual;
 const expectError = std.testing.expectError;
 
 test "runString" {
-    const input = "xmul(2,4)%&mul[3,7]!@^do_not_mul(5,5)+mul(32,64]then(mul(11,8)mul(8,5))";
-    try expectEqual(161, runString(input));
+    const input1 = "xmul(2,4)%&mul[3,7]!@^do_not_mul(5,5)+mul(32,64]then(mul(11,8)mul(8,5))";
+    try expectEqual(161, runString(input1));
+    const input2 = "xmul(2,4)&mul[3,7]!^don't()_mul(5,5)+mul(32,64](mul(11,8)undo()?mul(8,5))";
+    try expectEqual(48, runString(input2));
 }
