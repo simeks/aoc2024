@@ -7,6 +7,7 @@ pub fn build(b: *std.Build) void {
     const days = .{
         "day1",
         "day2",
+        "day3",
     };
 
     inline for (days) |day| {
