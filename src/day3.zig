@@ -6,65 +6,6 @@ const print = std.debug.print;
 const parseInt = std.fmt.parseInt;
 const isDigit = std.ascii.isDigit;
 
-/// Fixed buffer reader for strings
-pub const Reader = struct {
-    buffer: []const u8,
-    pos: usize = 0,
-
-    pub fn eof(self: Reader) bool {
-        return self.pos >= self.buffer.len;
-    }
-
-    /// Peek at next n bytes
-    pub fn peek(self: *Reader, n: usize) ![]const u8 {
-        if (self.pos + n > self.buffer.len) {
-            return error.OutOfBounds;
-        }
-        return self.buffer[self.pos .. self.pos + n];
-    }
-    /// Skip n bytes
-    pub fn skip(self: *Reader, n: usize) !void {
-        if (self.pos + n > self.buffer.len) {
-            return error.OutOfBounds;
-        }
-        self.pos += n;
-    }
-    /// Reads full int starting at pos
-    pub fn readInt(self: *Reader) !i32 {
-        var end = self.pos;
-        while (isDigit(self.buffer[end]) and end < self.buffer.len) : (end += 1) {}
-
-        if (end == self.pos) {
-            return error.NotANumber;
-        }
-
-        const x = try parseInt(i32, self.buffer[self.pos..end], 10);
-        self.pos = end;
-
-        return x;
-    }
-    /// Reads until the given char is encountered
-    /// error.Eof if char not found
-    pub fn readUntil(self: *Reader, char: u8) ![]const u8 {
-        const start = self.pos;
-        var end = start;
-        while (end < self.buffer.len and self.buffer[end] != char) : (end += 1) {}
-        if (end == self.buffer.len) {
-            return error.Eof;
-        }
-        self.pos = end;
-        return self.buffer[start..end];
-    }
-    /// If next char in buffer is char, read it, if not, keep pos intact and
-    /// return error
-    pub fn ensureRead(self: *Reader, char: u8) !void {
-        if ((try self.peek(1))[0] != char) {
-            return error.EnsureFailed;
-        }
-        try self.skip(1);
-    }
-};
-
 fn parseMul(reader: *Reader) !i32 {
     try reader.ensureRead('(');
     const a = try reader.readInt();
@@ -125,20 +66,23 @@ pub fn runString(str: []const u8) i32 {
             continue :sw .find_op;
         },
         .mul => {
-            const val = parseMul(&reader) catch continue :sw .find_op;
-            if (do) {
-                sum += val;
-            }
+            if (parseMul(&reader)) |val| {
+                if (do) {
+                    sum += val;
+                }
+            } else |_| {}
             continue :sw .find_op;
         },
         .do => {
-            parseDo(&reader) catch continue :sw .find_op;
-            do = true;
+            if (parseDo(&reader)) {
+                do = true;
+            } else |_| {}
             continue :sw .find_op;
         },
         .dont => {
-            parseDont(&reader) catch continue :sw .find_op;
-            do = false;
+            if (parseDont(&reader)) {
+                do = false;
+            } else |_| {}
             continue :sw .find_op;
         },
     }
@@ -150,6 +94,65 @@ pub fn main() !void {
     const res = runString(input);
     print("Result: {d}\n", .{res});
 }
+
+/// Fixed buffer reader for strings
+pub const Reader = struct {
+    buffer: []const u8,
+    pos: usize = 0,
+
+    pub fn eof(self: Reader) bool {
+        return self.pos >= self.buffer.len;
+    }
+
+    /// Peek at next n bytes
+    pub fn peek(self: *Reader, n: usize) ![]const u8 {
+        if (self.pos + n > self.buffer.len) {
+            return error.OutOfBounds;
+        }
+        return self.buffer[self.pos .. self.pos + n];
+    }
+    /// Skip n bytes
+    pub fn skip(self: *Reader, n: usize) !void {
+        if (self.pos + n > self.buffer.len) {
+            return error.OutOfBounds;
+        }
+        self.pos += n;
+    }
+    /// Reads full int starting at pos
+    pub fn readInt(self: *Reader) !i32 {
+        var end = self.pos;
+        while (isDigit(self.buffer[end]) and end < self.buffer.len) : (end += 1) {}
+
+        if (end == self.pos) {
+            return error.NotANumber;
+        }
+
+        const x = try parseInt(i32, self.buffer[self.pos..end], 10);
+        self.pos = end;
+
+        return x;
+    }
+    /// Reads until the given char is encountered
+    /// error.Eof if char not found
+    pub fn readUntil(self: *Reader, char: u8) ![]const u8 {
+        const start = self.pos;
+        var end = start;
+        while (end < self.buffer.len and self.buffer[end] != char) : (end += 1) {}
+        if (end == self.buffer.len) {
+            return error.Eof;
+        }
+        self.pos = end;
+        return self.buffer[start..end];
+    }
+    /// If next char in buffer is char, read it, if not, keep pos intact and
+    /// return error
+    pub fn ensureRead(self: *Reader, char: u8) !void {
+        if ((try self.peek(1))[0] != char) {
+            return error.EnsureFailed;
+        }
+        try self.skip(1);
+    }
+};
 
 const test_alloc = std.testing.allocator;
 const expect = std.testing.expect;
