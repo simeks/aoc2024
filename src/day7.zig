@@ -6,76 +6,71 @@ const print = std.debug.print;
 const parseInt = std.fmt.parseInt;
 const isDigit = std.ascii.isDigit;
 
-fn isValid(sum: i64, numbers: []i64, hold: i64) bool {
-    if (numbers.len == 1) {
-        return hold + numbers[0] == sum or hold * numbers[0] == sum;
-    }
+const Op = enum {
+    add,
+    mul,
+    cat,
+};
 
-    if (hold + numbers[0] <= sum and
-        isValid(sum, numbers[1..], hold + numbers[0]))
-    {
-        return true;
-    }
-    if (hold * numbers[0] <= sum and
-        isValid(sum, numbers[1..], hold * numbers[0]))
-    {
-        return true;
-    }
-    return false;
+const op_fn = std.enums.directEnumArray(Op, *const fn (i64, i64) i64, 0, .{
+    .add = add,
+    .mul = mul,
+    .cat = cat,
+});
+
+fn add(a: i64, b: i64) i64 {
+    return a + b;
 }
-
-fn part1(alloc: Allocator, input: []const u8) !i64 {
-    var res: i64 = 0;
-    var it = std.mem.tokenizeScalar(u8, input, '\n');
-    while (it.next()) |line| {
-        const sum, const numbers = try parseLine(alloc, line);
-        defer numbers.deinit();
-        if (isValid(sum, numbers.items, 0)) {
-            res += sum;
-        }
-    }
-    return res;
+fn mul(a: i64, b: i64) i64 {
+    return a * b;
 }
-
-/// Merges two numbers (12, 34) -> 1234
+/// Concats two numbers (12, 34) -> 1234
 /// Assuming a and b is > 0
-fn merge(a: i64, b: i64) i64 {
+fn cat(a: i64, b: i64) i64 {
     const n: i64 = @intCast(std.math.log10(@as(u64, @intCast(b))));
     return a * std.math.pow(i64, 10, n + 1) + b;
 }
 
-fn isValid2(sum: i64, numbers: []const i64, hold: i64) bool {
+/// Recursively checks if `numbers` produces given `sum`
+/// `hold` tracks current sum and should be 0 at start
+/// `ops` specifies what operators to apply.
+fn isValid(
+    sum: i64,
+    numbers: []i64,
+    hold: i64,
+    comptime ops: []const Op,
+) bool {
     if (numbers.len == 1) {
-        return (hold + numbers[0] == sum or
-            hold * numbers[0] == sum or
-            merge(hold, numbers[0]) == sum);
+        inline for (ops) |op| {
+            const func = op_fn[@intFromEnum(op)];
+            if (func(hold, numbers[0]) == sum) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    if (hold + numbers[0] <= sum and
-        isValid2(sum, numbers[1..], hold + numbers[0]))
-    {
-        return true;
-    }
-    if (hold * numbers[0] <= sum and
-        isValid2(sum, numbers[1..], hold * numbers[0]))
-    {
-        return true;
-    }
-    if (merge(hold, numbers[0]) <= sum and
-        isValid2(sum, numbers[1..], merge(hold, numbers[0])))
-    {
-        return true;
+    inline for (ops) |op| {
+        const func = op_fn[@intFromEnum(op)];
+        const val = func(hold, numbers[0]);
+        if (val <= sum and isValid(sum, numbers[1..], val, ops)) {
+            return true;
+        }
     }
     return false;
 }
 
-fn part2(alloc: Allocator, input: []const u8) !i64 {
+/// Runs day 7 algo applying the operators provided in ops.
+/// Part 1 expects 'add' and 'mul'
+/// Part 2 expects 'add', 'mul', and 'cat'
+fn run(alloc: Allocator, input: []const u8, comptime ops: []const Op) !i64 {
     var res: i64 = 0;
     var it = std.mem.tokenizeScalar(u8, input, '\n');
     while (it.next()) |line| {
         const sum, const numbers = try parseLine(alloc, line);
         defer numbers.deinit();
-        if (isValid2(sum, numbers.items, 0)) {
+
+        if (isValid(sum, numbers.items, 0, ops)) {
             res += sum;
         }
     }
@@ -88,10 +83,10 @@ pub fn main() !void {
 
     const input = @embedFile("input/day7.txt");
 
-    const res1 = try part1(arena.allocator(), input);
+    const res1 = try run(arena.allocator(), input, &.{ .add, .mul });
     print("Part 1: {d}\n", .{res1});
 
-    const res2 = try part2(arena.allocator(), input);
+    const res2 = try run(arena.allocator(), input, &.{ .add, .mul, .cat });
     print("Part 2: {d}\n", .{res2});
 }
 
@@ -135,7 +130,7 @@ test "part1" {
         \\292: 11 6 16 20
         \\292: 29 10 2 1
     ;
-    try expectEqual(3749 + 292, try part1(test_alloc, input));
+    try expectEqual(3749 + 292, try run(test_alloc, input, &.{ .add, .mul }));
 }
 test "part2" {
     const input =
@@ -149,7 +144,7 @@ test "part2" {
         \\21037: 9 7 18 13
         \\292: 11 6 16 20
     ;
-    try expectEqual(11387, try part2(test_alloc, input));
+    try expectEqual(11387, try run(test_alloc, input, &.{ .add, .mul, .cat }));
 }
 
 test "parseLine" {
