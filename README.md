@@ -1,5 +1,7 @@
 # AOC 2024 using Zig
 
+[Advent of Code 2024](https://adventofcode.com) attempt using [Zig](https://ziglang.org).
+
 ## Running
 
 To run a specific day:
