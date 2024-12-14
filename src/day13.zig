@@ -38,9 +38,9 @@ fn minTokens(configs: []const Config) !usize {
 
         const d = (by * ax - bx * ay);
 
-        // We assume colinearity and that the input only has a single
-        // solution, which seems to be true.
-        if (d == 0) {
+        // We assume that the input only has a single solution, i.e. no co-linearity
+        // which seems to be true.
+        if (@abs(d) <= std.math.floatEps(f64)) {
             return error.InvalidInput;
         }
 
@@ -140,4 +140,13 @@ test "part1" {
     defer configs.deinit();
 
     try expectEqual(480, try minTokens(configs.items));
+}
+
+test "invalid input" {
+    // Case with colinear buttons should return an error
+    const configs = [_]Config{
+        .{ .a = .{ 1, 1 }, .b = .{ 2, 2 }, .price = .{ 4, 4 } },
+    };
+
+    try expectError(error.InvalidInput, minTokens(&configs));
 }
