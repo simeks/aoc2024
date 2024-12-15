@@ -72,7 +72,7 @@ fn part2(alloc: Allocator, input: []const u8, board_size: Vec2) !usize {
     // Find the board by minimizing a cost. We can either use
     // SAD: Assuming robots are clustered together forming the christmas tree
     // countQuads: Also a good metric for clustered robots, faster but since we
-    //              use the procut we assume no quad is empty.
+    // use the product we assume no quad is empty.
 
     var best: ?struct { usize, usize } = null;
 
