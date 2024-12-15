@@ -22,6 +22,25 @@ const move_dir = std.enums.directEnumArray(Move, Vec2, 0, .{
     .right = .{ 1, 0 },
 });
 
+fn push1(map: *Mat(u8), pos: Vec2, dir: Vec2) bool {
+    const this = map.get(pos) catch {
+        return false;
+    };
+
+    if (this == '#') {
+        return false;
+    }
+    if (this == '.') {
+        return true;
+    }
+
+    if (push1(map, pos + dir, dir)) {
+        map.set(pos + dir, this) catch unreachable;
+        return true;
+    }
+    return false;
+}
+
 fn part1(alloc: Allocator, input: []const u8) !usize {
     var map, const moves = try parseInput(alloc, input);
     defer map.deinit(alloc);
@@ -32,36 +51,10 @@ fn part1(alloc: Allocator, input: []const u8) !usize {
     for (moves.items) |m| {
         const dir = move_dir[@intFromEnum(m)];
 
-        var check = pos + dir;
-        var end: i32 = 0;
-        while (true) {
-            if (try map.get(check) == '.') {
-                end += 1;
-                break;
-            } else if (try map.get(check) == '#') {
-                end = 0;
-                break;
-            }
-            check += dir;
-            end += 1;
-        }
-
-        while (end > 0) : (end -= 1) {
-            const new: Vec2 = .{
-                pos[0] + dir[0] * end,
-                pos[1] + dir[1] * end,
-            };
-            const old: Vec2 = .{
-                pos[0] + dir[0] * (end - 1),
-                pos[1] + dir[1] * (end - 1),
-            };
-
-            try map.set(new, try map.get(old));
-
-            if (end == 1) {
-                try map.set(old, '.');
-                pos = new;
-            }
+        if (push1(&map, pos + dir, dir)) {
+            try map.set(pos, '.');
+            pos = pos + dir;
+            try map.set(pos, '@');
         }
     }
 
@@ -69,6 +62,114 @@ fn part1(alloc: Allocator, input: []const u8) !usize {
     for (0..map.height) |y| {
         for (0..map.width) |x| {
             if (try map.get(.{ @intCast(x), @intCast(y) }) == 'O') {
+                score += 100 * y + x;
+            }
+        }
+    }
+    return score;
+}
+
+fn expand(alloc: Allocator, map: *const Mat(u8)) !Mat(u8) {
+    var new_map = try Mat(u8).initZeros(alloc, map.width * 2, map.height);
+    errdefer new_map.deinit(alloc);
+
+    for (0..map.height) |y| {
+        for (0..map.width) |x| {
+            const old = map.get(.{ @intCast(x), @intCast(y) }) catch unreachable;
+
+            if (old == '.') {
+                new_map.set(.{ @intCast(2 * x), @intCast(y) }, '.') catch unreachable;
+                new_map.set(.{ @intCast(2 * x + 1), @intCast(y) }, '.') catch unreachable;
+            } else if (old == '#') {
+                new_map.set(.{ @intCast(2 * x), @intCast(y) }, '#') catch unreachable;
+                new_map.set(.{ @intCast(2 * x + 1), @intCast(y) }, '#') catch unreachable;
+            } else if (old == 'O') {
+                new_map.set(.{ @intCast(2 * x), @intCast(y) }, '[') catch unreachable;
+                new_map.set(.{ @intCast(2 * x + 1), @intCast(y) }, ']') catch unreachable;
+            } else if (old == '@') {
+                new_map.set(.{ @intCast(2 * x), @intCast(y) }, '@') catch unreachable;
+                new_map.set(.{ @intCast(2 * x + 1), @intCast(y) }, '.') catch unreachable;
+            }
+        }
+    }
+    return new_map;
+}
+
+fn canPush(map: *Mat(u8), pos: Vec2, dir: Vec2) bool {
+    const this = map.get(pos) catch {
+        return false;
+    };
+
+    if (this == '#') {
+        return false;
+    }
+    if (this == '.') {
+        return true;
+    }
+
+    if (dir[1] == 0) {
+        if (canPush(map, pos + dir, dir)) {
+            return true;
+        }
+    } else {
+        const pos2 = pos + if (this == '[') Vec2{ 1, 0 } else Vec2{ -1, 0 };
+        if (canPush(map, pos + dir, dir) and canPush(map, pos2 + dir, dir)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn doPush(map: *Mat(u8), pos: Vec2, dir: Vec2) void {
+    const this = map.get(pos) catch unreachable;
+
+    if (this == '#' or this == '.') {
+        return;
+    }
+
+    if (dir[1] == 0) {
+        doPush(map, pos + dir, dir);
+        map.set(pos + dir, this) catch unreachable;
+    } else {
+        const other: u8 = if (this == '[') ']' else '[';
+        const pos2 = pos + if (this == '[') Vec2{ 1, 0 } else Vec2{ -1, 0 };
+
+        doPush(map, pos + dir, dir);
+        doPush(map, pos2 + dir, dir);
+
+        map.set(pos + dir, this) catch unreachable;
+        map.set(pos2 + dir, other) catch unreachable;
+        map.set(pos, '.') catch unreachable;
+        map.set(pos2, '.') catch unreachable;
+    }
+}
+
+fn part2(alloc: Allocator, input: []const u8) !usize {
+    var small_map, const moves = try parseInput(alloc, input);
+    defer small_map.deinit(alloc);
+    defer moves.deinit();
+
+    var map = try expand(alloc, &small_map);
+    defer map.deinit(alloc);
+
+    var pos = map.find('@') orelse return error.InvalidInput;
+
+    for (moves.items) |m| {
+        const dir = move_dir[@intFromEnum(m)];
+
+        if (canPush(&map, pos + dir, dir)) {
+            doPush(&map, pos + dir, dir);
+            try map.set(pos, '.');
+            pos = pos + dir;
+            try map.set(pos, '@');
+        }
+    }
+
+    var score: usize = 0;
+    for (0..map.height) |y| {
+        for (0..map.width) |x| {
+            if (try map.get(.{ @intCast(x), @intCast(y) }) == '[') {
+                assert(try map.get(.{ @intCast(x + 1), @intCast(y) }) == ']');
                 score += 100 * y + x;
             }
         }
@@ -86,6 +187,9 @@ pub fn main() !void {
 
     const ans1 = try part1(arena.allocator(), input);
     print("Part 1: {d}\n", .{ans1});
+
+    const ans2 = try part2(arena.allocator(), input);
+    print("Part 2: {d}\n", .{ans2});
 }
 
 fn parseInput(alloc: Allocator, input: []const u8) !struct { Mat(u8), MoveList } {
@@ -247,4 +351,56 @@ test "part1" {
     ;
 
     try expectEqual(2028, try part1(test_alloc, input));
+}
+test "expand" {
+    const input =
+        \\####
+        \\#.O#
+        \\#@.#
+        \\####
+    ;
+    const in = try Mat(u8).initFromInput(test_alloc, input);
+    defer in.deinit(test_alloc);
+    const out = try expand(test_alloc, &in);
+    defer out.deinit(test_alloc);
+
+    try expectEqual(8, out.width);
+    try expectEqual(4, out.height);
+
+    for (0..out.width) |x| {
+        try expectEqual('#', try out.get(.{ @intCast(x), 0 }));
+        try expectEqual('#', try out.get(.{ @intCast(x), 3 }));
+    }
+
+    try expectEqual('[', try out.get(.{ 4, 1 }));
+    try expectEqual(']', try out.get(.{ 5, 1 }));
+    try expectEqual('@', try out.get(.{ 2, 2 }));
+    try expectEqual('.', try out.get(.{ 3, 2 }));
+}
+test "part2" {
+    const input =
+        \\##########
+        \\#..O..O.O#
+        \\#......O.#
+        \\#.OO..O.O#
+        \\#..O@..O.#
+        \\#O#..O...#
+        \\#O..O..O.#
+        \\#.OO.O.OO#
+        \\#....O...#
+        \\##########
+        \\
+        \\<vv>^<v^>v>^vv^v>v<>v^v<v<^vv<<<^><<><>>v<vvv<>^v^>^<<<><<v<<<v^vv^v>^
+        \\vvv<<^>^v^^><<>>><>^<<><^vv^^<>vvv<>><^^v>^>vv<>v<<<<v<^v>^<^^>>>^<v<v
+        \\><>vv>v^v^<>><>>>><^^>vv>v<^^^>>v^v^<^^>v^^>v^<^v>v<>>v^v^<v>v^^<^^vv<
+        \\<<v<^>>^^^^>>>v^<>vvv^><v<<<>^^^vv^<vvv>^>v<^^^^v<>^>vvvv><>>v^<<^^^^^
+        \\^><^><>>><>^^<<^^v>>><^<v>^<vv>>v>>>^v><>^v><<<<v>>v<v<v>vvv>^<><<>^><
+        \\^>><>^v<><^vvv<^^<><v<<<<<><^v<<<><<<^^<v<^^^><^>>^<v^><<<^>>^v<v^v<v^
+        \\>^>>^v>vv>^<<^v<>><<><<v<<v><>v<^vv<<<>^^v^>^^>>><<^v>>v^v><^^>>^<>vv^
+        \\<><^^>^^^<><vvvvv^v<v<<>^v<v>v<<^><<><<><<<^^<<<^<<>><<><^^^>^^<>^>v<>
+        \\^^>vv<^v^v<vv>^<><v<^v>^^^>>>^^vvv^>vvv<>>>^<^>>>>>^<<^v>^vvv<>^<><<v>
+        \\v^^>>><<^^<>>^v^<v^vv<>v^<<>^<^v^v><^<<<><<^<v><v<>vv>>v><v^<vv<>v^<<^
+    ;
+
+    try expectEqual(9021, try part2(test_alloc, input));
 }
