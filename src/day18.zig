@@ -70,10 +70,60 @@ fn part1(
     }
     return @intCast(dist.get(end).?);
 }
-fn part2(alloc: Allocator, input: []const u8) !usize {
-    _ = alloc;
-    _ = input;
-    return 0;
+fn part2(alloc: Allocator, input: []const u8) !Vec2 {
+    const bits = try parseInput2(alloc, input);
+    defer bits.deinit();
+
+    var map = try Mat(u8).initZeros(alloc, 71, 71);
+    defer map.deinit(alloc);
+
+    const start: Vec2 = .{ 0, 0 };
+    const end: Vec2 = .{ @intCast(71 - 1), @intCast(71 - 1) };
+
+    var queue = std.PriorityQueue(QueueItem, void, lessThan).init(alloc, {});
+    defer queue.deinit();
+
+    var dist = std.AutoArrayHashMap(Vec2, i32).init(alloc);
+    defer dist.deinit();
+
+    for (bits.items) |bit| {
+        try map.set(bit, '#');
+
+        dist.clearRetainingCapacity();
+        while (queue.removeOrNull()) |_| {} // clear queue
+
+        try queue.add(.{ start, 0 });
+
+        while (queue.removeOrNull()) |node| {
+            const u, const u_dist = node;
+
+            if (@reduce(.And, u == end)) {
+                break;
+            }
+
+            for (neighbors) |v_dir| {
+                const v = u + v_dir;
+                if (!map.isInside(v)) {
+                    continue;
+                }
+
+                if (try map.get(v) == '#') {
+                    continue;
+                }
+
+                const v_dist = u_dist + 1;
+                if (!dist.contains(v) or v_dist < dist.get(v).?) {
+                    try dist.put(v, v_dist);
+                    try queue.add(.{ v, v_dist });
+                }
+            }
+        }
+
+        if (!dist.contains(end)) {
+            return bit;
+        }
+    }
+    return error.NotFound;
 }
 
 pub fn main() !void {
@@ -87,8 +137,8 @@ pub fn main() !void {
     const ans1 = try part1(arena.allocator(), input, 71, 71, 1024);
     print("Part 1: {d}\n", .{ans1});
 
-    // const ans2 = try part2(arena.allocator(), input);
-    // print("Part 2: {d}\n", .{ans2});
+    const ans2 = try part2(arena.allocator(), input);
+    print("Part 2: {d}\n", .{ans2});
 }
 
 fn parseInput(
@@ -115,6 +165,23 @@ fn parseInput(
     return map;
 }
 
+fn parseInput2(
+    alloc: Allocator,
+    input: []const u8,
+) !std.ArrayList(Vec2) {
+    var list = std.ArrayList(Vec2).init(alloc);
+    errdefer list.deinit();
+
+    var line_it = std.mem.tokenizeScalar(u8, input, '\n');
+    while (line_it.next()) |line| {
+        var it = std.mem.tokenizeScalar(u8, line, ',');
+        const x = try parseInt(i32, it.next().?, 10);
+        const y = try parseInt(i32, it.next().?, 10);
+        try list.append(.{ x, y });
+    }
+
+    return list;
+}
 fn Mat(Type: type) type {
     return struct {
         const Self = @This();
