@@ -70,6 +70,10 @@ fn part1(
     }
     return @intCast(dist.get(end).?);
 }
+
+/// Binary search
+/// Time (mean ± σ):       2.7 ms ±   0.2 ms    [User: 1.6 ms, System: 1.0 ms]
+/// Range (min … max):     2.4 ms …   4.9 ms    393 runs
 fn part2(alloc: Allocator, input: []const u8) !Vec2 {
     const bits = try parseInput2(alloc, input);
     defer bits.deinit();
@@ -86,8 +90,16 @@ fn part2(alloc: Allocator, input: []const u8) !Vec2 {
     var dist = std.AutoArrayHashMap(Vec2, i32).init(alloc);
     defer dist.deinit();
 
-    for (bits.items) |bit| {
-        try map.set(bit, '#');
+    var rbegin: usize = 0;
+    var rend: usize = bits.items.len;
+
+    while (true) {
+        const mid: usize = rbegin + @divFloor(rend - rbegin, 2);
+
+        @memset(map.data, 0);
+        for (bits.items[0..mid]) |c| {
+            try map.set(c, '#');
+        }
 
         dist.clearRetainingCapacity();
         while (queue.removeOrNull()) |_| {} // clear queue
@@ -119,12 +131,77 @@ fn part2(alloc: Allocator, input: []const u8) !Vec2 {
             }
         }
 
-        if (!dist.contains(end)) {
-            return bit;
+        if (dist.contains(end)) {
+            rbegin = mid;
+        } else {
+            rend = mid;
+        }
+
+        if (rbegin == rend - 1) {
+            return bits.items[rbegin];
         }
     }
     return error.NotFound;
 }
+
+// Bruteforce
+// Time (mean ± σ):     579.0 ms ±   2.1 ms    [User: 566.8 ms, System: 11.6 ms]
+// Range (min … max):   577.0 ms … 584.5 ms    10 runs
+// fn part2(alloc: Allocator, input: []const u8) !Vec2 {
+//     const bits = try parseInput2(alloc, input);
+//     defer bits.deinit();
+//
+//     var map = try Mat(u8).initZeros(alloc, 71, 71);
+//     defer map.deinit(alloc);
+//
+//     const start: Vec2 = .{ 0, 0 };
+//     const end: Vec2 = .{ @intCast(71 - 1), @intCast(71 - 1) };
+//
+//     var queue = std.PriorityQueue(QueueItem, void, lessThan).init(alloc, {});
+//     defer queue.deinit();
+//
+//     var dist = std.AutoArrayHashMap(Vec2, i32).init(alloc);
+//     defer dist.deinit();
+//
+//     for (bits.items) |bit| {
+//         try map.set(bit, '#');
+//
+//         dist.clearRetainingCapacity();
+//         while (queue.removeOrNull()) |_| {} // clear queue
+//
+//         try queue.add(.{ start, 0 });
+//
+//         while (queue.removeOrNull()) |node| {
+//             const u, const u_dist = node;
+//
+//             if (@reduce(.And, u == end)) {
+//                 break;
+//             }
+//
+//             for (neighbors) |v_dir| {
+//                 const v = u + v_dir;
+//                 if (!map.isInside(v)) {
+//                     continue;
+//                 }
+//
+//                 if (try map.get(v) == '#') {
+//                     continue;
+//                 }
+//
+//                 const v_dist = u_dist + 1;
+//                 if (!dist.contains(v) or v_dist < dist.get(v).?) {
+//                     try dist.put(v, v_dist);
+//                     try queue.add(.{ v, v_dist });
+//                 }
+//             }
+//         }
+//
+//         if (!dist.contains(end)) {
+//             return bit;
+//         }
+//     }
+//     return error.NotFound;
+// }
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
