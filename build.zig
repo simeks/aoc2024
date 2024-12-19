@@ -23,6 +23,7 @@ pub fn build(b: *std.Build) void {
         "day16",
         "day17",
         "day18",
+        "day19",
     };
 
     inline for (days) |day| {
