@@ -7,7 +7,9 @@ const parseInt = std.fmt.parseInt;
 const isDigit = std.ascii.isDigit;
 
 const Vec2 = @Vector(2, i32);
+
 const Path = std.BoundedArray(u8, 16);
+const PathList = std.BoundedArray(Path, 16);
 
 const Keypad = struct {
     buttons: []const []const u8,
@@ -46,15 +48,12 @@ const dir_keypad: Keypad = .{ .buttons = &.{
 } };
 
 /// Find all variations of button presses producing target
-fn findButtons(alloc: Allocator, pad: *const Keypad, target: []const u8) !std.ArrayList(Path) {
-    var out = std.ArrayList(Path).init(alloc);
-    errdefer out.deinit();
-
-    var queue = std.ArrayList(struct { Vec2, usize, Path }).init(alloc);
-    defer queue.deinit();
+fn findButtons(pad: *const Keypad, target: []const u8) !PathList {
+    var out = try PathList.init(0);
 
     const start = pad.find('A') orelse return error.InvalidInput;
 
+    var queue = try std.BoundedArray(struct { Vec2, usize, Path }, 16).init(0);
     try queue.append(.{ start, 0, try Path.init(0) });
 
     while (queue.popOrNull()) |item| {
@@ -98,7 +97,6 @@ fn findButtons(alloc: Allocator, pad: *const Keypad, target: []const u8) !std.Ar
 const Cache = std.AutoArrayHashMap(struct { i32, Path }, usize);
 
 fn search(
-    alloc: Allocator,
     max_depth: i32,
     depth: i32,
     target: Path,
@@ -116,16 +114,15 @@ fn search(
 
     const keypad = if (depth == 0) &num_keypad else &dir_keypad;
 
-    var possible = try findButtons(alloc, keypad, target.slice());
-    defer possible.deinit();
-    for (possible.items) |p| {
+    const possible = try findButtons(keypad, target.slice());
+    for (possible.slice()) |p| {
         var len: usize = 0;
         var it = std.mem.splitScalar(u8, p.slice()[0 .. p.len - 1], 'A');
         while (it.next()) |t| {
             var path: Path = try .fromSlice(t);
             try path.append('A');
 
-            len += try search(alloc, max_depth, depth + 1, path, cache);
+            len += try search(max_depth, depth + 1, path, cache);
         }
         if (min == null or min.? > len) {
             min = len;
@@ -141,15 +138,16 @@ fn part1(alloc: Allocator, input: []const u8) !usize {
     var cache: Cache = .init(alloc);
     defer cache.deinit();
 
+    try cache.ensureTotalCapacity(200);
+
     var total: usize = 0;
 
     var line_it = std.mem.tokenizeScalar(u8, input, '\n');
     while (line_it.next()) |line| {
         const pin = try parseInt(usize, line[0 .. line.len - 1], 10);
-        const len = try search(alloc, max_depth, 0, try .fromSlice(line), &cache);
+        const len = try search(max_depth, 0, try .fromSlice(line), &cache);
         total += pin * len;
     }
-
     return total;
 }
 fn part2(alloc: Allocator, input: []const u8) !usize {
@@ -158,15 +156,16 @@ fn part2(alloc: Allocator, input: []const u8) !usize {
     var cache: Cache = .init(alloc);
     defer cache.deinit();
 
+    try cache.ensureTotalCapacity(1000);
+
     var total: usize = 0;
 
     var line_it = std.mem.tokenizeScalar(u8, input, '\n');
     while (line_it.next()) |line| {
         const pin = try parseInt(usize, line[0 .. line.len - 1], 10);
-        const len = try search(alloc, max_depth, 0, try .fromSlice(line), &cache);
+        const len = try search(max_depth, 0, try .fromSlice(line), &cache);
         total += pin * len;
     }
-
     return total;
 }
 
