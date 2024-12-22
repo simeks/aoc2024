@@ -6,9 +6,11 @@ const print = std.debug.print;
 const parseInt = std.fmt.parseInt;
 const isDigit = std.ascii.isDigit;
 
-fn part1(alloc: Allocator, input: []const u8) !i64 {
-    _ = alloc;
+fn Set(Type: type) type {
+    return std.AutoArrayHashMap(Type, void);
+}
 
+fn part1(input: []const u8) !i64 {
     var sum: i64 = 0;
     var line_it = std.mem.tokenizeScalar(u8, input, '\n');
     while (line_it.next()) |line| {
@@ -27,82 +29,62 @@ fn part1(alloc: Allocator, input: []const u8) !i64 {
     return sum;
 }
 
-fn calcSecrets(alloc: Allocator, init: i64) !std.ArrayList(i8) {
-    var out = std.ArrayList(i8).init(alloc);
-    var secret: i64 = init;
-    for (0..2000) |_| {
-        secret ^= secret << 6;
-        secret = @mod(secret, 16777216);
-        secret ^= secret >> 5;
-        secret = @mod(secret, 16777216);
-        secret ^= secret << 11;
-        secret = @mod(secret, 16777216);
-        try out.append(@intCast(@mod(secret, 10)));
-    }
-    return out;
-}
-
 fn part2(alloc: Allocator, input: []const u8) !i64 {
-    var all_secrets = std.ArrayList(std.ArrayList(i8)).init(alloc);
-    try all_secrets.ensureTotalCapacity(2000);
-    var all_diffs = std.ArrayList(std.ArrayList(@Vector(4, i8))).init(alloc);
-    try all_diffs.ensureTotalCapacity(2000);
-    var all_price = std.ArrayList(std.ArrayList(i8)).init(alloc);
-    try all_price.ensureTotalCapacity(2000);
+    const Diffs = @Vector(4, i8);
+
+    var seen = Set(Diffs).init(alloc);
+    defer seen.deinit();
+
+    // Total number of bananas for the given diff sequence
+    var bananas = std.AutoArrayHashMap(Diffs, i64).init(alloc);
+    defer bananas.deinit();
 
     var line_it = std.mem.tokenizeScalar(u8, input, '\n');
     while (line_it.next()) |line| {
-        try all_secrets.append(try calcSecrets(alloc, try parseInt(i64, line, 10)));
-    }
+        seen.clearRetainingCapacity();
 
-    for (all_secrets.items) |secrets| {
-        var diffs = std.ArrayList(@Vector(4, i8)).init(alloc);
-        try diffs.ensureTotalCapacity(secrets.items.len);
-        var price = std.ArrayList(i8).init(alloc);
-        try price.ensureTotalCapacity(secrets.items.len);
+        var secret = try parseInt(i64, line, 10);
 
-        for (4..secrets.items.len) |i| {
-            try diffs.append(.{
-                @intCast(secrets.items[i - 4] - secrets.items[i - 3]),
-                @intCast(secrets.items[i - 3] - secrets.items[i - 2]),
-                @intCast(secrets.items[i - 2] - secrets.items[i - 1]),
-                @intCast(secrets.items[i - 1] - secrets.items[i]),
-            });
+        var diff: Diffs = @splat(0);
+        var prev: i8 = @intCast(@mod(secret, 10));
 
-            try price.append(@intCast(secrets.items[i]));
-        }
-        try all_diffs.append(diffs);
-        try all_price.append(price);
-    }
+        for (0..2000) |i| {
+            secret ^= secret << 6;
+            secret = @mod(secret, 16777216);
+            secret ^= secret >> 5;
+            secret = @mod(secret, 16777216);
+            secret ^= secret << 11;
+            secret = @mod(secret, 16777216);
 
-    const val = [_]i8{ -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+            const num: i8 = @intCast(@mod(secret, 10));
+            if (i == 0) {
+                prev = num;
+                continue;
+            }
 
-    var tries = std.ArrayList(@Vector(4, i8)).init(alloc);
-    for (val) |i| {
-        for (val) |j| {
-            for (val) |k| {
-                for (val) |l| {
-                    try tries.append(.{ i, j, k, l });
+            const d: i8 = prev - num;
+            diff = @shuffle(i8, diff, undefined, @Vector(4, i32){ 1, 2, 3, 3 });
+            diff[3] = d;
+            prev = num;
+
+            if (i > 3) {
+                // Only the first instance of the diff sequence counts, so ignore
+                // more than one.
+                if (seen.contains(diff)) {
+                    continue;
                 }
+                try seen.put(diff, {});
+
+                (try bananas.getOrPutValue(diff, 0)).value_ptr.* += num;
             }
         }
     }
 
+    // Pick the diff sequence with the most bananas
     var best: i64 = 0;
-    for (0.., tries.items) |ti, t| {
-        if (ti % 100 == 0) {
-            print("{d} / {d}\n", .{ ti + 1, tries.items.len });
-        }
-        var score: i64 = 0;
-        for (0..all_diffs.items.len) |i| {
-            for (0..all_diffs.items[0].items.len) |j| {
-                if (@reduce(.And, all_diffs.items[i].items[j] == t)) {
-                    score += all_price.items[i].items[j];
-                    break;
-                }
-            }
-        }
-        best = @max(best, score);
+    var it = bananas.iterator();
+    while (it.next()) |item| {
+        best = @max(best, item.value_ptr.*);
     }
 
     return best;
@@ -116,7 +98,7 @@ pub fn main() !void {
 
     const input = @embedFile("input/day22.txt");
 
-    const ans1 = try part1(arena.allocator(), input);
+    const ans1 = try part1(input);
     print("Part 1: {d}\n", .{ans1});
 
     const ans2 = try part2(arena.allocator(), input);
@@ -138,7 +120,7 @@ test "part1" {
         \\2024
     ;
 
-    try expectEqual(37327623, try part1(test_alloc, input));
+    try expectEqual(37327623, try part1(input));
 }
 test "part2" {
     const input =
