@@ -8,6 +8,10 @@ const isDigit = std.ascii.isDigit;
 
 const Node = @Vector(2, u8);
 const NodeList = std.ArrayList(Node);
+// Observing the input data we can see that the largest clique will
+// never be larger than 14 (max 14 edges per node). So for places were
+// we have bounds on our list
+const BoundedNodeList = std.BoundedArray(Node, 16);
 
 fn part1(alloc: Allocator, input: []const u8) !i64 {
     var adj = std.AutoArrayHashMap(Node, Set(Node)).init(alloc);
@@ -77,9 +81,6 @@ fn part2(alloc: Allocator, input: []const u8) ![]const u8 {
         try ba.value_ptr.put(a);
     }
 
-    var best = NodeList.init(alloc);
-    defer best.deinit();
-
     var nodes = NodeList.init(alloc);
     defer nodes.deinit();
 
@@ -88,35 +89,32 @@ fn part2(alloc: Allocator, input: []const u8) ![]const u8 {
         try nodes.append(item.key_ptr.*);
     }
 
-    var r = NodeList.init(alloc);
-    defer r.deinit();
+    var best: BoundedNodeList = try .init(0);
+    var r: BoundedNodeList = try .init(0);
 
-    var x = NodeList.init(alloc);
-    defer x.deinit();
-
-    try bronKerbosch(alloc, &adj, &best, &r, &nodes, &x);
+    try bronKerbosch(&adj, &best, &r, nodes.items, &.{});
 
     const lte_fn = struct {
         pub fn inner(_: void, a: Node, b: Node) bool {
             return lte(a, b);
         }
     }.inner;
-    std.mem.sort(Node, best.items, {}, lte_fn);
+    std.mem.sort(Node, best.slice(), {}, lte_fn);
 
-    const res = try alloc.alloc(u8, 2 * best.items.len + best.items.len - 1);
-    for (0.., best.items) |i, n| {
+    const res = try alloc.alloc(u8, 2 * best.len + best.len - 1);
+    for (0.., best.slice()) |i, n| {
         res[3 * i] = n[0];
         res[3 * i + 1] = n[1];
-        if (i != best.items.len - 1) {
+        if (i != best.len - 1) {
             res[3 * i + 2] = ',';
         }
     }
     return res;
 }
 
-fn intersection(alloc: Allocator, a: *const NodeList, b: Set(Node)) !NodeList {
-    var out: NodeList = .init(alloc);
-    for (a.items) |n| {
+fn intersection(a: []const Node, b: Set(Node)) !BoundedNodeList {
+    var out: BoundedNodeList = try .init(0);
+    for (a) |n| {
         if (b.contains(n)) {
             try out.append(n);
         }
@@ -125,36 +123,28 @@ fn intersection(alloc: Allocator, a: *const NodeList, b: Set(Node)) !NodeList {
 }
 
 fn bronKerbosch(
-    alloc: Allocator,
     adj: *const std.AutoArrayHashMap(Node, Set(Node)),
-    best: *NodeList,
-    r: *NodeList,
-    p: *const NodeList,
-    x: *const NodeList,
+    best: *BoundedNodeList,
+    r: *BoundedNodeList,
+    p: []const Node,
+    x: []const Node,
 ) !void {
-    if (p.items.len == 0 and x.items.len == 0) {
-        if (r.items.len > best.items.len) {
-            best.clearRetainingCapacity();
-            for (r.items) |n| {
-                try best.append(n);
-            }
+    if (p.len == 0 and x.len == 0) {
+        if (r.len > best.len) {
+            best.* = r.*;
         }
     }
 
-    var copy_p = try p.clone();
-    defer copy_p.deinit();
-
-    while (copy_p.items.len > 0) {
-        const v = copy_p.items[copy_p.items.len - 1];
-        const ip = try intersection(alloc, &copy_p, adj.get(v).?);
-        defer ip.deinit();
-        const ix = try intersection(alloc, x, adj.get(v).?);
-        defer ix.deinit();
+    var cur_p = p;
+    while (cur_p.len > 0) {
+        const v = cur_p[cur_p.len - 1];
+        const ip = try intersection(cur_p, adj.get(v).?);
+        const ix = try intersection(x, adj.get(v).?);
 
         try r.append(v);
-        try bronKerbosch(alloc, adj, best, r, &ip, &ix);
+        try bronKerbosch(adj, best, r, ip.slice(), ix.slice());
         _ = r.pop();
-        _ = copy_p.pop();
+        cur_p = cur_p[0 .. cur_p.len - 1];
     }
 }
 
